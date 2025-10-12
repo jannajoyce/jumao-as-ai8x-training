@@ -1,22 +1,56 @@
-*.map
-*.mem
-*.prof
-/.mypy_cache/
-/.venv/
-/.vscode/
-**/build/
-/data/
-/latest_log_dir
-/latest_log_file
-/logs/
-/ninja-python-distributions
-/pip-selfcheck.json
-/pretrained/
-/sensitivity.csv
-/sensitivity.png
-/tensorflow/
-/weights_sparsity.csv
-**/__pycache__/
-/super-linter.log
-/super-linter.report
-/typings/
+# ===================================
+# Python Git Ignore Template
+# ===================================
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# PyTorch, TensorFlow, and model outputs
+runs/
+logs/
+checkpoints/
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.tflite
+
+# Environment and dependency files
+*.env
+*.venv
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Temporary or cache files
+*.log
+*.tmp
+*.bak
+*.swp
+*.DS_Store
+Thumbs.db
+
+# IDE and editor folders
+.vscode/
+.idea/
+
+# System files
+.DS_Store
+desktop.ini
+
+# ===================================
+# End of .gitignore
+# ===================================
+
