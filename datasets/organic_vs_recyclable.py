@@ -1,0 +1,183 @@
+###################################################################################################
+#
+# Copyright (C) 2023 Analog Devices, Inc. All Rights Reserved.
+# This software is proprietary to Analog Devices, Inc. and its licensors.
+#
+###################################################################################################
+#
+# Copyright (C) 2022 Maxim Integrated Products, Inc. (now owned by Analog Devices Inc.)
+# All Rights Reserved.
+#
+# Maxim Integrated Products, Inc. Default Copyright Notice:
+# https://www.maximintegrated.com/en/aboutus/legal/copyrights.html
+#
+###################################################################################################
+"""
+Organic vs Recyclable Waste Classification Dataset
+"""
+
+import os
+import sys
+import torch
+from torch.utils.data import Dataset
+from torchvision import transforms
+
+import albumentations as album
+import cv2
+
+import ai8x
+
+
+class OrganicVsRecyclable(Dataset):
+    """
+    Organic vs Recyclable Waste Classification Dataset.
+
+    Dataset structure should be:
+        data/
+        └── organic_vs_recyclable/
+            ├── train/
+            │   ├── O/  (organic images)
+            │   └── R/  (recyclable images)
+            └── test/
+                ├── O/
+                └── R/
+
+    Args:
+        root_dir (string): Root directory of dataset.
+        d_type (string): Dataset type. Either 'train' or 'test'.
+        transform (callable, optional): Torchvision transform to apply.
+        resize_size (tuple): Resize size (width, height).
+        augment_data (bool): Apply augmentation only if True and d_type == 'train'.
+    """
+
+    labels = ['organic', 'recyclable']
+    label_to_id_map = {k: v for v, k in enumerate(labels)}
+    label_to_folder_map = {'organic': 'O', 'recyclable': 'R'}
+
+    def __init__(self, root_dir, d_type, transform=None,
+                 resize_size=(128, 128), augment_data=False):
+        self.root_dir = root_dir
+        self.data_dir = os.path.join(root_dir, 'organic_vs_recyclable', d_type)
+
+        if not self.__check_data_exist():
+            self.__print_download_manual()
+            sys.exit("Dataset not found!")
+
+        self.__get_image_paths()
+
+        # Define augmentation and preprocessing
+        if d_type == 'train' and augment_data:
+            self.album_transform = album.Compose([
+                album.GaussNoise(var_limit=(1.0, 20.0), p=0.25),
+                album.RGBShift(r_shift_limit=15, g_shift_limit=15, b_shift_limit=15, p=0.5),
+                album.ColorJitter(p=0.5),
+                album.SmallestMaxSize(max_size=int(1.2 * min(resize_size))),
+                album.ShiftScaleRotate(shift_limit=0.05, scale_limit=0.05, rotate_limit=15, p=0.5),
+                album.RandomCrop(height=resize_size[0], width=resize_size[1]),
+                album.HorizontalFlip(p=0.5),
+                album.Normalize(mean=(0.0, 0.0, 0.0), std=(1.0, 1.0, 1.0))
+            ])
+        else:
+            self.album_transform = album.Compose([
+                album.SmallestMaxSize(max_size=int(1.2 * min(resize_size))),
+                album.CenterCrop(height=resize_size[0], width=resize_size[1]),
+                album.Normalize(mean=(0.0, 0.0, 0.0), std=(1.0, 1.0, 1.0))
+            ])
+
+        self.transform = transform
+
+    def __check_data_exist(self):
+        """Check if dataset directory exists."""
+        return os.path.isdir(self.data_dir)
+
+    def __print_download_manual(self):
+        """Print instructions if dataset not found."""
+        print("******************************************")
+        print("Dataset not found!")
+        print("Please ensure the dataset is in the following directory structure:")
+        print("  'data/organic_vs_recyclable/train/O' (organic images)")
+        print("  'data/organic_vs_recyclable/train/R' (recyclable images)")
+        print("  'data/organic_vs_recyclable/test/O' (organic images)")
+        print("  'data/organic_vs_recyclable/test/R' (recyclable images)")
+        print("******************************************")
+
+    def __get_image_paths(self):
+        """Get all image file paths and corresponding labels."""
+        self.data_list = []
+        for label in self.labels:
+            image_dir = os.path.join(self.data_dir, self.label_to_folder_map[label])
+            if not os.path.exists(image_dir):
+                print(f"Warning: Directory not found: {image_dir}")
+                continue
+            for file_name in sorted(os.listdir(image_dir)):
+                file_path = os.path.join(image_dir, file_name)
+                if os.path.isfile(file_path):
+                    self.data_list.append((file_path, self.label_to_id_map[label]))
+
+    def __len__(self):
+        return len(self.data_list)
+
+    def __getitem__(self, index):
+        label = torch.tensor(self.data_list[index][1], dtype=torch.int64)
+        image_path = self.data_list[index][0]
+
+        # Read image with OpenCV
+        image = cv2.imread(image_path)
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+        # Apply albumentations transforms
+        if self.album_transform:
+            image = self.album_transform(image=image)["image"]
+
+        # Apply torch transforms
+        if self.transform:
+            image = self.transform(image)
+
+        return image, label
+
+
+def get_organicvsrecyclable_dataset(data, load_train, load_test):
+    """
+    Load the Organic vs Recyclable Waste dataset.
+    Returns each data sample in 128x128 size.
+
+    Data Augmentation (for train):
+        - Additive Gaussian Noise
+        - RGB Shift
+        - Color Jitter
+        - Shift, Scale & Rotate
+        - Random Crop
+        - Horizontal Flip
+    """
+    (data_dir, args) = data
+
+    transform = transforms.Compose([
+        transforms.ToTensor(),
+        ai8x.normalize(args=args),
+    ])
+
+    if load_train:
+        train_dataset = OrganicVsRecyclable(
+            root_dir=data_dir, d_type='train', transform=transform, augment_data=True
+        )
+    else:
+        train_dataset = None
+
+    if load_test:
+        test_dataset = OrganicVsRecyclable(
+            root_dir=data_dir, d_type='test', transform=transform
+        )
+    else:
+        test_dataset = None
+
+    return train_dataset, test_dataset
+
+
+datasets = [
+    {
+        'name': 'organic_vs_recyclable',
+        'input': (3, 128, 128),
+        'output': ('organic', 'recyclable'),
+        'loader': get_organicvsrecyclable_dataset,
+    },
+]
